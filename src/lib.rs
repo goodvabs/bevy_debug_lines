@@ -55,8 +55,9 @@ mod dim {
 pub(crate) const DEBUG_LINES_SHADER_HANDLE: HandleUntyped =
     HandleUntyped::weak_from_u64(Shader::TYPE_UUID, 17477439189930443325);
 
-pub(crate) struct DebugLinesConfig {
-    depth_test: bool,
+pub struct DebugLinesConfig {
+    pub depth_test: bool,
+    pub enabled: bool,
 }
 
 /// Bevy plugin, for initializing stuff.
@@ -114,11 +115,18 @@ impl Plugin for DebugLinesPlugin {
         app.add_startup_system(setup)
             .add_system_to_stage(CoreStage::PostUpdate, update.label("draw_lines"));
 
+        // Insert all of our required resources. Don’t overwrite
+        // the `DebugLinesConfig` if it already exists.
+        if app.sub_app(RenderApp).world.get_resource::<DebugLinesConfig>().is_none() {
+            app.sub_app_mut(RenderApp)
+                .insert_resource(DebugLinesConfig {
+                    depth_test: self.depth_test,
+                    enabled: true,
+                });
+        }
+
         app.sub_app_mut(RenderApp)
             .add_render_command::<dim::Phase, dim::DrawDebugLines>()
-            .insert_resource(DebugLinesConfig {
-                depth_test: self.depth_test,
-            })
             .init_resource::<dim::DebugLinePipeline>()
             .init_resource::<SpecializedMeshPipelines<dim::DebugLinePipeline>>()
             .add_system_to_stage(RenderStage::Extract, extract)
@@ -174,44 +182,47 @@ fn update(
     time: Res<Time>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut lines: ResMut<DebugLines>,
+    config: Res<DebugLinesConfig>,
 ) {
-    // For each debug line mesh, fill its buffers with the relevant positions/colors chunks.
-    for (mesh_handle, debug_lines_idx) in debug_line_meshes.iter() {
-        let mesh = meshes.get_mut(dim::from_handle(mesh_handle)).unwrap();
-        use VertexAttributeValues::{Float32x3, Float32x4};
-        if let Some(Float32x3(vbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
-            vbuffer.clear();
-            if let Some(new_content) = lines
-                .positions
-                .chunks(MAX_POINTS_PER_MESH)
-                .nth(debug_lines_idx.0)
-            {
-                vbuffer.extend(new_content);
+    if config.enabled {
+        // For each debug line mesh, fill its buffers with the relevant positions/colors chunks.
+        for (mesh_handle, debug_lines_idx) in debug_line_meshes.iter() {
+            let mesh = meshes.get_mut(dim::from_handle(mesh_handle)).unwrap();
+            use VertexAttributeValues::{Float32x3, Float32x4};
+            if let Some(Float32x3(vbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+                vbuffer.clear();
+                if let Some(new_content) = lines
+                    .positions
+                    .chunks(MAX_POINTS_PER_MESH)
+                    .nth(debug_lines_idx.0)
+                {
+                    vbuffer.extend(new_content);
+                }
             }
-        }
 
-        if let Some(Float32x4(cbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_COLOR) {
-            cbuffer.clear();
-            if let Some(new_content) = lines
-                .colors
-                .chunks(MAX_POINTS_PER_MESH)
-                .nth(debug_lines_idx.0)
-            {
-                cbuffer.extend(new_content);
+            if let Some(Float32x4(cbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_COLOR) {
+                cbuffer.clear();
+                if let Some(new_content) = lines
+                    .colors
+                    .chunks(MAX_POINTS_PER_MESH)
+                    .nth(debug_lines_idx.0)
+                {
+                    cbuffer.extend(new_content);
+                }
+        
+                /*
+                // https://github.com/Toqozz/bevy_debug_lines/issues/16
+                if let Some(Indices::U16(indices)) = mesh.indices_mut() {
+                    indices.clear();
+                    if let Some(new_content) = lines.durations.chunks(_MAX_LINES_PER_MESH).nth(debug_lines_idx.0) {
+                        indices.extend(
+                            new_content.iter().enumerate().map(|(i, _)| i as u16).flat_map(|i| [i * 2, i*2 + 1])
+                        );
+                    }
+                }
+                */
             }
         }
-
-        /*
-        // https://github.com/Toqozz/bevy_debug_lines/issues/16
-        if let Some(Indices::U16(indices)) = mesh.indices_mut() {
-            indices.clear();
-            if let Some(new_content) = lines.durations.chunks(_MAX_LINES_PER_MESH).nth(debug_lines_idx.0) {
-                indices.extend(
-                    new_content.iter().enumerate().map(|(i, _)| i as u16).flat_map(|i| [i * 2, i*2 + 1])
-                );
-            }
-        }
-        */
     }
 
     // Processes stuff like getting rid of expired lines and stuff.
