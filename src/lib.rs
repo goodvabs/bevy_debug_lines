@@ -184,13 +184,15 @@ fn update(
     mut lines: ResMut<DebugLines>,
     config: Res<DebugLinesConfig>,
 ) {
-    if config.enabled {
-        // For each debug line mesh, fill its buffers with the relevant positions/colors chunks.
-        for (mesh_handle, debug_lines_idx) in debug_line_meshes.iter() {
-            let mesh = meshes.get_mut(dim::from_handle(mesh_handle)).unwrap();
-            use VertexAttributeValues::{Float32x3, Float32x4};
-            if let Some(Float32x3(vbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
-                vbuffer.clear();
+    // For each debug line mesh, fill its buffers with the relevant positions/colors chunks.
+    for (mesh_handle, debug_lines_idx) in debug_line_meshes.iter() {
+        let mesh = meshes.get_mut(dim::from_handle(mesh_handle)).unwrap();
+        use VertexAttributeValues::{Float32x3, Float32x4};
+        if let Some(Float32x3(vbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_POSITION) {
+            vbuffer.clear();
+
+            // Only extend the buffer if drawing is enabled.
+            if config.enabled {
                 if let Some(new_content) = lines
                     .positions
                     .chunks(MAX_POINTS_PER_MESH)
@@ -199,9 +201,13 @@ fn update(
                     vbuffer.extend(new_content);
                 }
             }
+        }
 
-            if let Some(Float32x4(cbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_COLOR) {
-                cbuffer.clear();
+        if let Some(Float32x4(cbuffer)) = mesh.attribute_mut(Mesh::ATTRIBUTE_COLOR) {
+            cbuffer.clear();
+            
+            // Only extend the buffer if drawing is enabled.
+            if config.enabled {
                 if let Some(new_content) = lines
                     .colors
                     .chunks(MAX_POINTS_PER_MESH)
@@ -209,19 +215,19 @@ fn update(
                 {
                     cbuffer.extend(new_content);
                 }
-        
-                /*
-                // https://github.com/Toqozz/bevy_debug_lines/issues/16
-                if let Some(Indices::U16(indices)) = mesh.indices_mut() {
-                    indices.clear();
-                    if let Some(new_content) = lines.durations.chunks(_MAX_LINES_PER_MESH).nth(debug_lines_idx.0) {
-                        indices.extend(
-                            new_content.iter().enumerate().map(|(i, _)| i as u16).flat_map(|i| [i * 2, i*2 + 1])
-                        );
-                    }
-                }
-                */
             }
+    
+            /*
+            // https://github.com/Toqozz/bevy_debug_lines/issues/16
+            if let Some(Indices::U16(indices)) = mesh.indices_mut() {
+                indices.clear();
+                if let Some(new_content) = lines.durations.chunks(_MAX_LINES_PER_MESH).nth(debug_lines_idx.0) {
+                    indices.extend(
+                        new_content.iter().enumerate().map(|(i, _)| i as u16).flat_map(|i| [i * 2, i*2 + 1])
+                    );
+                }
+            }
+            */
         }
     }
 
